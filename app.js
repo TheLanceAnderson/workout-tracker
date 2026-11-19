@@ -1,5 +1,5 @@
 
-const WORKOUT_SECONDS = 10;
+const WORKOUT_SECONDS = 20*60; // 20 minutes
 const COUNTDOWN_SECONDS = 3;
 const CUSTOM_SOUND_CHANCE = 0.2;
 
