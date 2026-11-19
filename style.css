@@ -95,3 +95,17 @@ html, body {
   margin: 0 0 8px;
   min-height: 1.2em;
 }
+
+
+#end-button {
+  padding: 12px;
+  background: #444;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-weight: bold;
+}
+
+#end-button[hidden] {
+  display: none;
+}

@@ -1,5 +1,5 @@
 
-const WORKOUT_SECONDS = 20*60; // 20 minutes
+const WORKOUT_SECONDS = 15; // 15 seconds for testing
 const COUNTDOWN_SECONDS = 3;
 const CUSTOM_SOUND_CHANCE = 0.2;
 
@@ -14,11 +14,19 @@ const lastLapDisplay = document.getElementById("last-lap");
 const statusDisplay = document.getElementById("status");
 const startButton = document.getElementById("start-button");
 const lapButton = document.getElementById("lap-button");
+const endButton = document.getElementById("end-button");
 
 let state = "ready";
 let workoutStart = null;
 let lastLapTime = null;
 let laps = [];
+
+let workoutId = null;
+let workoutDate = null;
+let workoutStartWallTime = null;
+let previousPersonalBest = null;
+let previousWorkoutCount = 0;
+let confettiBuffer = null;
 
 let countdownEnd = null;
 let countdownInterval = null;
@@ -28,6 +36,71 @@ let audioContext = null;
 let soundBuffers = {};
 let soundLoadingPromise = null;
 let wakeLock = null;
+
+
+async function loadWorkoutStats() {
+  const workouts = await getWorkouts();
+
+  previousWorkoutCount = workouts.length;
+  previousPersonalBest = await getPersonalBest();
+
+  document.getElementById("personal-best").textContent =
+    previousPersonalBest ?? "--";
+}
+
+async function loadConfettiSound() {
+  if (!audioContext || confettiBuffer) return;
+
+  try {
+    const response = await fetch("sounds/custom-woow.m4a");
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const data = await response.arrayBuffer();
+    confettiBuffer = await audioContext.decodeAudioData(data);
+  } catch (error) {
+    console.warn("Could not load confetti sound:", error);
+  }
+}
+
+function playConfettiSound() {
+  if (!audioContext || !confettiBuffer) return;
+
+  const source = audioContext.createBufferSource();
+  source.buffer = confettiBuffer;
+  source.connect(audioContext.destination);
+  source.start();
+}
+
+async function saveCurrentWorkout(completed) {
+  if (!workoutId) return;
+
+  const elapsedSeconds = completed
+    ? WORKOUT_SECONDS
+    : Math.min(
+        WORKOUT_SECONDS,
+        (performance.now() - workoutStart) / 1000
+      );
+
+  const workout = {
+    id: workoutId,
+    schemaVersion: BACKUP_FORMAT_VERSION,
+    date: workoutDate,
+    durationSeconds: WORKOUT_SECONDS,
+    elapsedSeconds,
+    completed,
+    totalLaps: laps.length,
+    laps: [...laps]
+  };
+
+  await saveWorkout(workout);
+  await clearActiveWorkout();
+
+  return workout;
+}
+
 
 // --------------------
 // TIME FORMATTING
@@ -66,6 +139,8 @@ function initializeAudio() {
   if (!soundLoadingPromise) {
     soundLoadingPromise = loadCustomSounds();
   }
+
+  loadConfettiSound();
 }
 
 async function loadCustomSounds() {
@@ -209,6 +284,19 @@ function beginWorkout() {
   clearInterval(countdownInterval);
 
   state = "running";
+
+  workoutId = crypto.randomUUID();
+  workoutDate = new Date().toISOString();
+  workoutStartWallTime = Date.now();
+
+  saveActiveWorkout({
+  id: "current",
+  workoutId,
+  date: workoutDate,
+  startTime: workoutStartWallTime,
+  laps: []
+  }).catch(console.error);
+
   workoutStart = performance.now();
   lastLapTime = workoutStart;
   laps = [];
@@ -225,6 +313,7 @@ function beginWorkout() {
   requestWakeLock();
 
   timerInterval = setInterval(updateTimer, 100);
+  endButton.hidden = false;
 }
 
 function updateCountdown() {
@@ -292,38 +381,73 @@ function recordLap() {
   lapCountDisplay.textContent = laps.length;
   lastLapDisplay.textContent =
     `${lapTime.toFixed(1)}s`;
+    
+  saveActiveWorkout({
+    id: "current",
+    workoutId,
+    date: workoutDate,
+    startTime: workoutStartWallTime,
+    laps: [...laps]
+  }).catch(console.error);
 }
 
 // --------------------
 // FINISH AND RESET
 // --------------------
 
-function finishWorkout() {
+
+async function finishWorkout(completed = true) {
   if (state !== "running") return;
 
   state = "finished";
+  endButton.hidden = true;
 
   clearInterval(timerInterval);
   clearInterval(countdownInterval);
 
-  timerDisplay.textContent = "00:00";
+  timerDisplay.textContent = completed
+    ? "00:00"
+    : formatTime(
+        Math.max(
+          0,
+          WORKOUT_SECONDS -
+            (performance.now() - workoutStart) / 1000
+        )
+      );
+
   lapButton.disabled = true;
+  startButton.disabled = true;
 
   releaseWakeLock();
   playEndBuzzer();
 
-  statusDisplay.textContent =
-    `Workout complete! ${laps.length} laps recorded.`;
+  try {
+    const workout = await saveCurrentWorkout(completed);
+
+    const newRecord =
+      completed &&
+      (previousPersonalBest === null ||
+        workout.totalLaps > previousPersonalBest);
+
+    if (newRecord && previousWorkoutCount >= 3) {
+      setTimeout(playConfettiSound, 1700);
+    }
+
+    await loadWorkoutStats();
+
+    statusDisplay.textContent = completed
+      ? `Workout complete! ${workout.totalLaps} laps recorded.`
+      : `Partial workout saved! ${workout.totalLaps} laps recorded.`;
+  } catch (error) {
+    console.error("Could not save workout:", error);
+    statusDisplay.textContent =
+      "Workout ended, but saving failed. Do not reload.";
+  }
 
   startButton.textContent = "START NEW WORKOUT";
   startButton.disabled = false;
-
-  console.log("Completed workout:", {
-    durationSeconds: WORKOUT_SECONDS,
-    totalLaps: laps.length,
-    laps: laps
-  });
 }
+
 
 function resetWorkout() {
   clearInterval(timerInterval);
@@ -347,6 +471,8 @@ function resetWorkout() {
   startButton.textContent = "START WORKOUT";
 
   statusDisplay.textContent = "Ready to start";
+  endButton.hidden = true;
+  workoutId = null;
 }
 
 // --------------------
@@ -379,3 +505,14 @@ document.addEventListener("visibilitychange", () => {
     }
   }
 });
+
+
+endButton.addEventListener("click", () => {
+  if (state !== "running") return;
+
+  if (confirm("End this workout early and save your progress?")) {
+    finishWorkout(false);
+  }
+});
+
+loadWorkoutStats().catch(console.error);
