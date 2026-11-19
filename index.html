@@ -11,33 +11,66 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <main class="app">
-    <div class="timer" id="timer">20:00</div>
+  
+<main class="app">
 
-    <div class="stats">
-      <div>
-        <span id="lap-count">0</span>
-        <small>Laps</small>
-      </div>
-      <div>
-        <span id="last-lap">--</span>
-        <small>Last Lap</small>
-      </div>
-      <div>
-        <span id="personal-best">--</span>
-        <small>Personal Best</small>
-      </div>
-    </div>
+  <!-- WORKOUT SCREEN -->
+  <section id="workout-screen" class="screen active">
 
-    <button id="lap-button" disabled>
+      <div class="timer" id="timer">20:00</div>
+
+      <div class="stats">
+      <div>
+          <span id="lap-count">0</span>
+          <small>Laps</small>
+      </div>
+
+      <div>
+          <span id="last-lap">--</span>
+          <small>Last Lap</small>
+      </div>
+
+      <div>
+          <span id="personal-best">--</span>
+          <small>Personal Best</small>
+      </div>
+      </div>
+
+      <button id="lap-button" disabled>
       TAP TO LAP
-    </button>
+      </button>
 
-    <button id="end-button" hidden>END WORKOUT EARLY</button>
+      <button id="start-button">START WORKOUT</button>
 
-    <button id="start-button">START WORKOUT</button>
-    <p id="status" aria-live="polite">Ready to start</p>
+      <button id="end-button" hidden>
+      END WORKOUT EARLY
+      </button>
+
+      <button id="history-button">
+      VIEW WORKOUT HISTORY
+      </button>
+
+      <p id="status" aria-live="polite">Ready to start</p>
+
+  </section>
+
+  <!-- HISTORY SCREEN -->
+  <section id="history-screen" class="screen">
+
+      <h1>Workout History</h1>
+
+      <div id="history-summary"></div>
+
+      <div id="history-list"></div>
+
+      <button id="back-button">
+      BACK TO WORKOUT
+      </button>
+
+  </section>
+
   </main>
+
 
   <script src="database.js"></script>
   <script src="app.js"></script>

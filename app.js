@@ -348,6 +348,8 @@ function startCountdown() {
 
   countdownInterval =
     setInterval(updateCountdown, 50);
+
+  historyButton.disabled = true;
 }
 
 // --------------------
@@ -400,6 +402,7 @@ async function finishWorkout(completed = true) {
   if (state !== "running") return;
 
   state = "finished";
+  historyButton.disabled = false;
   endButton.hidden = true;
 
   clearInterval(timerInterval);
@@ -473,6 +476,7 @@ function resetWorkout() {
   statusDisplay.textContent = "Ready to start";
   endButton.hidden = true;
   workoutId = null;
+  historyButton.disabled = false;
 }
 
 // --------------------
@@ -516,3 +520,148 @@ endButton.addEventListener("click", () => {
 });
 
 loadWorkoutStats().catch(console.error);
+
+
+// --------------------
+// WORKOUT HISTORY SCREEN
+// --------------------
+
+const workoutScreen =
+  document.getElementById("workout-screen");
+
+const historyScreen =
+  document.getElementById("history-screen");
+
+const historyButton =
+  document.getElementById("history-button");
+
+const backButton =
+  document.getElementById("back-button");
+
+const historyList =
+  document.getElementById("history-list");
+
+const historySummary =
+  document.getElementById("history-summary");
+
+function formatWorkoutDate(dateString) {
+  return new Date(dateString).toLocaleString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit"
+  });
+}
+
+function formatDuration(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const remaining = Math.floor(seconds % 60);
+
+  return `${minutes}m ${remaining}s`;
+}
+
+async function showHistory() {
+  if (state === "running" || state === "countdown") {
+    return;
+  }
+
+  workoutScreen.classList.remove("active");
+  historyScreen.classList.add("active");
+
+  historyList.textContent = "Loading workouts...";
+
+  try {
+    const workouts = await getWorkouts();
+    renderHistory(workouts);
+  } catch (error) {
+    console.error(error);
+    historyList.textContent = "Could not load workout history.";
+  }
+}
+
+function renderHistory(workouts) {
+  historyList.replaceChildren();
+
+  if (workouts.length === 0) {
+    historySummary.textContent = "No workouts saved yet.";
+    return;
+  }
+
+  const completed = workouts.filter(w => w.completed);
+
+  const best = completed.length
+    ? Math.max(...completed.map(w => w.totalLaps))
+    : null;
+
+  const totalLaps = workouts.reduce(
+    (sum, w) => sum + w.totalLaps, 0
+  );
+
+  historySummary.textContent =
+    `${workouts.length} workouts | ` +
+    `${totalLaps} total laps | ` +
+    `Best: ${best ?? "--"}`;
+
+  for (const workout of workouts) {
+    const card = document.createElement("details");
+    card.className = "history-card";
+
+    const summary = document.createElement("summary");
+    summary.textContent =
+      `${formatWorkoutDate(workout.date)} — ${workout.totalLaps} laps`;
+
+    const meta = document.createElement("div");
+    meta.className = "history-meta";
+
+    const avgLap = workout.totalLaps > 0
+      ? workout.laps.reduce(
+          (sum, lap) => sum + lap.lapTimeSeconds, 0
+        ) / workout.totalLaps
+      : null;
+
+    meta.textContent =
+      `${workout.completed ? "Completed" : "Partial"} | ` +
+      `${formatDuration(workout.elapsedSeconds)} | ` +
+      `Avg lap: ${avgLap === null ? "--" : avgLap.toFixed(1) + "s"}`;
+
+    const lapDetails = document.createElement("div");
+    lapDetails.className = "lap-details";
+
+    if (workout.laps.length === 0) {
+      lapDetails.textContent = "No laps recorded.";
+    } else {
+      for (const lap of workout.laps) {
+        const row = document.createElement("div");
+        row.className = "lap-row";
+
+        const lapNumber = document.createElement("span");
+        lapNumber.textContent = `Lap ${lap.lap}`;
+
+        const lapTime = document.createElement("span");
+        lapTime.textContent =
+          `${lap.lapTimeSeconds.toFixed(1)}s`;
+
+        const elapsed = document.createElement("span");
+        elapsed.textContent =
+          `At ${formatDuration(lap.elapsedSeconds)}`;
+
+        row.append(lapNumber, lapTime, elapsed);
+        lapDetails.appendChild(row);
+      }
+    }
+
+    card.append(summary, meta, lapDetails);
+    historyList.appendChild(card);
+  }
+}
+
+function showWorkoutScreen() {
+  historyScreen.classList.remove("active");
+  workoutScreen.classList.add("active");
+
+  loadWorkoutStats().catch(console.error);
+}
+
+historyButton.addEventListener("click", showHistory);
+backButton.addEventListener("click", showWorkoutScreen);
